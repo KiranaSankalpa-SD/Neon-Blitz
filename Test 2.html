@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Blitz: Airship Protocol</title>
+    
+    <style>
+        :root {
+            --neon-blue: #00f3ff;
+            --neon-pink: #ff0055;
+            --neon-green: #00ff66;
+            --bg-color: #0a0a10;
+            --plasma-yellow: #ffff00;
+        }
+        
+        /* === VIDEO BACKGROUND STYLES === */
+        #bg-video {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            min-width: 100%;
+            min-height: 100%;
+            width: auto;
+            height: auto;
+            z-index: -1; 
+            transform: translate(-50%, -50%);
+            object-fit: cover; 
+        }
+        /* ================================== */
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #050508; 
+            
+            font-family: 'Segoe UI', sans-serif;
+            color: white;
+            user-select: none;
+            cursor: none; 
+        }
+
+        canvas { display: block; }
+
+        /* UI OVERLAY */
+        #ui-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            padding: 20px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        /* HUD */
+        .hud-row { display: flex; justify-content: space-between; align-items: flex-start; }
+        
+        .stat-box {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px 20px;
+            border-left: 4px solid var(--neon-blue);
+            transform: skewX(-10deg);
+        }
+
+        h2, h3 { margin: 0; text-shadow: 0 0 10px currentColor; }
+        .score-val { font-size: 32px; font-weight: 900; color: var(--neon-blue); }
+        .wave-val { font-size: 24px; color: var(--neon-green); }
+
+        /* HP Bar */
+        .hp-container {
+            width: 300px;
+            height: 12px;
+            background: #333;
+            margin-top: 5px;
+            transform: skewX(-20deg);
+            border: 1px solid #555;
+        }
+        #hp-fill {
+            width: 100%; height: 100%;
+            background: var(--neon-green);
+            box-shadow: 0 0 10px var(--neon-green);
+            transition: width 0.1s;
+        }
+
+        /* UPGRADE MENU & SCREENS */
+        #upgrade-menu, #start-screen, #game-over {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(10, 10, 16, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            pointer-events: auto;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+        
+        .active-overlay { opacity: 1 !important; pointer-events: auto !important; cursor: default !important; }
+
+        .card-container { display: flex; gap: 20px; margin-top: 30px; }
+        
+        .upgrade-card {
+            background: #1a1a24;
+            border: 2px solid #333;
+            width: 200px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .upgrade-card:hover {
+            border-color: var(--neon-blue);
+            transform: translateY(-5px);
+            box-shadow: 0 0 20px rgba(0, 243, 255, 0.2);
+        }
+        .upgrade-card h3 { color: var(--neon-blue); margin-bottom: 10px; }
+        .upgrade-card p { font-size: 14px; color: #ccc; }
+
+        button {
+            background: transparent;
+            color: white;
+            border: 2px solid white;
+            padding: 15px 40px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-top: 20px;
+            transition: all 0.1s;
+        }
+        button:hover { background: white; color: black; box-shadow: 0 0 15px white; }
+
+        /* Custom Cursor */
+        #crosshair {
+            position: absolute;
+            width: 20px; height: 20px;
+            border: 2px solid var(--neon-pink);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 100;
+        }
+        #crosshair::after {
+            content: '';
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 4px; height: 4px;
+            background: var(--neon-blue);
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+        }
+
+        /* VOLUME CONTROL & SETTINGS STYLES */
+        #settings-panel {
+            position: relative; 
+            width: 500px; 
+            height: 400px; 
+            background: rgba(0, 0, 0, 0.7);
+            padding: 30px;
+            border: 2px solid var(--neon-blue);
+            box-shadow: 0 0 20px rgba(0, 243, 255, 0.5);
+            margin-top: 20px;
+            display: none; 
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        #volume-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 20px 0;
+        }
+        #volume-slider {
+            width: 200px; 
+            cursor: pointer;
+            accent-color: var(--neon-blue); 
+        }
+        .main-menu-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        /* CSS for Back Button Positioning (Bottom Left) */
+        .settings-footer {
+            position: absolute;
+            bottom: 30px;
+            left: 30px;
+        }
+    </style>
+</head>
+<body>
+
+<video autoplay muted loop id="bg-video">
+    <source src="27770-365891067_medium.mp4" type="video/mp4">
+    </video>
+
+<div id="crosshair"></div>
+
+<div id="ui-layer">
+    <div class="hud-row">
+        <div class="stat-box" style="border-color: var(--neon-green);">
+            <div style="font-size: 12px; letter-spacing: 1px; color:#aaa;">INTEGRITY</div>
+            <div class="hp-container"><div id="hp-fill"></div></div>
+        </div>
+        <div class="stat-box">
+            <div class="score-val" id="score-display">0</div>
+            <div class="wave-val" id="wave-display">WAVE 1</div>
+        </div>
+    </div>
+    
+    <div style="align-self: center; display:flex; gap: 10px;">
+        <div style="color: #666; font-size: 12px;">SPACE: DASH</div>
+        <div style="color: #666; font-size: 12px;">L-CLICK: SLASH</div>
+        <div style="color: #666; font-size: 12px;">R-CLICK: SHOOT (HOLD)</div>
+    </div>
+</div>
+
+<div id="start-screen" class="active-overlay">
+    <div class="main-menu-content" id="main-menu-content">
+        <h1 style="font-size: 60px; color: var(--neon-blue); text-transform:uppercase;">Neon Blitz</h1>
+        <p style="color:#888;">AIRSHIP PROTOCOLS ENGAGED </p>
+        <button onclick="Game.init()">Launch</button>
+        <button onclick="showSettings()">Settings</button> 
+    </div>
+
+    <div id="settings-panel">
+        <h2 style="color: var(--neon-blue);">⚙️ System Settings</h2>
+        
+        <div id="volume-control">
+            <span style="font-size: 18px; color: var(--neon-blue);">🔊 Master Volume:</span>
+            <input type="range" min="0" max="100" value="50" class="slider" id="volume-slider">
+        </div>
+        
+        <div class="settings-footer">
+             <button onclick="hideSettings()">Back</button>
+        </div>
+    </div>
+</div>
+
+<div id="upgrade-menu">
+    <h2>System Upgrade Available</h2>
+    <p>Choose a modification protocol</p>
+    <div class="card-container" id="upgrade-cards">
+        </div>
+</div>
+
+<div id="game-over">
+    <h1 style="color: var(--neon-pink);">CRITICAL FAILURE</h1>
+    <p id="final-score">Score: 0</p>
+    <button onclick="Game.init()">Reboot</button>
+    <button onclick="Game.exitToMenu()" style="border-color: var(--neon-pink);">Exit to Menu</button>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<audio id="game-music" loop preload="auto">
+    <source src="Neon Battlecry.mp3" type="audio/mpeg">
+    </audio>
+
+<audio id="sfx-dash" preload="auto">
+    <source src="mixkit-explainer-video-game-alert-sweep-236.mp3" type="audio/mpeg">
+    </audio>
+
+<audio id="sfx-shoot" preload="auto">
+    <source src="mixkit-short-laser-gun-shot-1670.mp3" type="audio/mpeg">
+    </audio>
+
+<audio id="sfx-slash" preload="auto">
+    <source src="mixkit-sword-slashes-in-battle-2763.mp3" type="audio/mpeg">
+    </audio>
+
+
+<script>
+/** * ADVANCED MATH & PHYSICS UTILS 
+ */
+const Vec2 = {
+    add: (v1, v2) => ({ x: v1.x + v2.x, y: v1.y + v2.y }),
+    sub: (v1, v2) => ({ x: v1.x - v2.x, y: v1.y - v2.y }),
+    mult: (v, s) => ({ x: v.x * s, y: v.y * s }),
+    mag: (v) => Math.sqrt(v.x * v.x + v.y * v.y),
+    normalize: (v) => {
+        const m = Math.sqrt(v.x * v.x + v.y * v.y);
+        return m === 0 ? { x: 0, y: 0 } : { x: v.x / m, y: v.y / m };
+    },
+    dist: (v1, v2) => Math.hypot(v2.x - v1.x, v2.y - v1.y),
+    angle: (v1, v2) => Math.atan2(v2.y - v1.y, v2.x - v1.x)
+};
+
+/**
+ * GAME ENGINE & CANVAS SETUP
+ */
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const crosshair = document.getElementById('crosshair');
+const gameMusic = document.getElementById('game-music');
+const sfxDash = document.getElementById('sfx-dash');
+const sfxShoot = document.getElementById('sfx-shoot');
+const sfxSlash = document.getElementById('sfx-slash'); 
+const volumeSlider = document.getElementById('volume-slider');
+
+// DOM elements for menu control
+const mainMenuContent = document.getElementById('main-menu-content');
+const settingsPanel = document.getElementById('settings-panel');
+
+
+let bounds = { w: window.innerWidth, h: window.innerHeight };
+
+// Resize handling
+window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    bounds = { w: canvas.width, h: canvas.height };
+});
+window.dispatchEvent(new Event('resize'));
+
+// Input State 
+const Input = {
+    keys: { w:false, a:false, s:false, d:false, space:false },
+    mouse: { x:0, y:0, left:false, right:false }, 
+    
+    init() {
+        window.addEventListener('keydown', e => { if(Input.keys.hasOwnProperty(e.key.toLowerCase())) Input.keys[e.key.toLowerCase()] = true; if(e.code === 'Space') Input.keys.space = true; });
+        window.addEventListener('keyup', e => { if(Input.keys.hasOwnProperty(e.key.toLowerCase())) Input.keys[e.key.toLowerCase()] = false; if(e.code === 'Space') Input.keys.space = false; });
+        window.addEventListener('mousemove', e => { Input.mouse.x = e.clientX; Input.mouse.y = e.clientY; crosshair.style.left = e.clientX+'px'; crosshair.style.top = e.clientY+'px'; });
+        
+        window.addEventListener('mousedown', e => { 
+            if(e.button === 0) Input.mouse.left = true; 
+            if(e.button === 2) Input.mouse.right = true; 
+        });
+        
+        window.addEventListener('mouseup', e => { 
+            if(e.button === 0) Input.mouse.left = false; 
+            if(e.button === 2) Input.mouse.right = false;
+        });
+        window.addEventListener('contextmenu', e => e.preventDefault());
+    }
+};
+
+/**
+ * AUDIO HANDLING & SETTINGS FUNCTIONS
+ */
+function updateVolume(value) {
+    const volume = value / 100;
+    // Music volume is set lower than SFX for balance
+    gameMusic.volume = volume * 0.5;
+    sfxDash.volume = volume;
+    sfxShoot.volume = volume;
+    sfxSlash.volume = volume; 
+}
+
+// Attach listener to slider
+volumeSlider.addEventListener('input', (e) => {
+    updateVolume(e.target.value);
+});
+
+// Settings visibility functions
+function showSettings() {
+    mainMenuContent.style.display = 'none';
+    settingsPanel.style.display = 'flex';
+}
+
+function hideSettings() {
+    mainMenuContent.style.display = 'flex';
+    settingsPanel.style.display = 'none';
+}
+
+// Initial volume setting
+updateVolume(50); // Set initial volume to 50%
+
+
+/**
+ * GAME OBJECTS CLASSES 
+ */
+
+class Entity {
+    constructor(x, y, radius, color) {
+        this.pos = { x, y };
+        this.vel = { x: 0, y: 0 };
+        this.acc = { x: 0, y: 0 };
+        this.radius = radius;
+        this.color = color;
+        this.dead = false;
+        this.friction = 0.9;
+    }
+    
+    update() {
+        this.vel = Vec2.add(this.vel, this.acc);
+        this.pos = Vec2.add(this.pos, this.vel);
+        this.vel = Vec2.mult(this.vel, this.friction);
+        this.acc = { x: 0, y: 0 }; // Reset acceleration
+    }
+
+    draw() {
+        ctx.beginPath();
+        ctx.arc(this.pos.x, this.pos.y, this.radius, 0, Math.PI*2);
+        ctx.fillStyle = this.color;
+        ctx.fill();
+    }
+}
+
+class Player extends Entity {
+    constructor() {
+        super(bounds.w/2, bounds.h/2, 15, '#00f3ff');
+        this.speed = 0.8;
+        this.maxHp = 100;
+        this.hp = 100;
+        
+        // Upgradable Stats
+        this.stats = {
+            moveSpeed: 1.0,
+            dashCooldownMax: 60,
+            slashDmg: 40,
+            gunDmg: 15,
+            fireRate: 10
+        };
+
+        // State
+        this.angle = 0;
+        this.dashTimer = 0;
+        // DASH START DELAY: 3 seconds (3 * 60 frames)
+        this.dashCooldown = 180; 
+        this.slashTimer = 0;
+        this.shootTimer = 0;
+        this.invulnerable = 0;
+    }
+
+    update() {
+        // 1. Movement Physics 
+        let dir = { x: 0, y: 0 };
+        if (Input.keys.w) dir.y -= 1;
+        if (Input.keys.s) dir.y += 1;
+        if (Input.keys.a) dir.x -= 1;
+        if (Input.keys.d) dir.x += 1;
+
+        const moveLen = Vec2.mag(dir);
+        if (moveLen > 0) {
+            dir = Vec2.mult(Vec2.normalize(dir), this.speed * this.stats.moveSpeed);
+            this.acc = Vec2.add(this.acc, dir);
+        }
+
+        // 2. Aiming
+        this.angle = Vec2.angle(this.pos, Input.mouse);
+
+        // 3. Actions
+        this.handleDash();
+        this.handleCombat();
+
+        // 4. Boundary Constraint 
+        if (this.pos.x < 0) this.vel.x += 1;
+        if (this.pos.x > bounds.w) this.vel.x -= 1;
+        if (this.pos.y < 0) this.vel.y += 1;
+        if (this.pos.y > bounds.h) this.vel.y -= 1;
+
+        super.update();
+        
+        // Timer decrements
+        if (this.invulnerable > 0) this.invulnerable--;
+    }
+
+    handleDash() {
+        if (this.dashCooldown > 0) this.dashCooldown--;
+        if (this.dashTimer > 0) {
+            this.dashTimer--;
+            // Ghost trails
+            Game.particles.push(new Particle(this.pos.x, this.pos.y, 0, 0, this.radius, this.color, 0.15));
+        }
+
+        if (Input.keys.space && this.dashCooldown <= 0) {
+            const dashForce = 25;
+            let dashDir = Vec2.mag(this.vel) > 0.1 ? Vec2.normalize(this.vel) : {x:Math.cos(this.angle), y:Math.sin(this.angle)};
+            
+            this.vel = Vec2.mult(dashDir, dashForce);
+            this.dashCooldown = this.stats.dashCooldownMax;
+            this.dashTimer = 10; 
+            this.invulnerable = 15;
+            Game.shake = 10;
+            
+            sfxDash.currentTime = 0; 
+            sfxDash.play().catch(e => console.log("Dash SFX failed:", e));
+        }
+    }
+
+    // Combat Logic for continuous hold shoot
+    handleCombat() {
+        if (this.slashTimer > 0) this.slashTimer--;
+        if (this.shootTimer > 0) this.shootTimer--; // Decrement timer every frame
+
+        // Melee (L-Click) - Continuous hold/slash
+        if (Input.mouse.left && this.slashTimer <= 0) {
+            this.slashTimer = 25;
+            // Create hitbox
+            Game.projectiles.push(new SlashHitbox(this.pos.x, this.pos.y, this.angle, this.stats.slashDmg));
+            // Slight lunge
+            this.vel = Vec2.add(this.vel, { x: Math.cos(this.angle)*5, y: Math.sin(this.angle)*5 });
+            
+            // SFX: Use cloneNode(true) for reliable rapid fire
+            const slashClone = sfxSlash.cloneNode(true);
+            slashClone.volume = sfxSlash.volume; 
+            slashClone.currentTime = 0; 
+            slashClone.play().catch(e => console.log("Cloned Slash SFX failed:", e));
+        }
+
+        // Shoot (R-Click) - Checks if the button is HELD DOWN (Input.mouse.right)
+        if (Input.mouse.right && this.shootTimer <= 0) {
+            
+            // --- SHOOT ACTION ---
+            this.shootTimer = this.stats.fireRate; // Reset the cooldown timer (rate of fire)
+            
+            const spread = (Math.random() - 0.5) * 0.1;
+            const bVel = { x: Math.cos(this.angle + spread)*20, y: Math.sin(this.angle + spread)*20 };
+            
+            // Recoil
+            this.vel = Vec2.sub(this.vel, Vec2.mult(bVel, 0.05));
+            
+            Game.projectiles.push(new Bullet(this.pos.x, this.pos.y, bVel, this.stats.gunDmg));
+
+            // SFX Fix: Clone the audio node for rapid fire
+            const shootClone = sfxShoot.cloneNode(true);
+            shootClone.volume = sfxShoot.volume; 
+            shootClone.currentTime = 0; 
+            shootClone.play().catch(e => console.log("Cloned Shoot SFX failed:", e));
+        }
+    }
+
+    draw() {
+        ctx.save();
+        ctx.translate(this.pos.x, this.pos.y);
+        
+        // Stamina/Dash Bar
+        // Use the normal Max Cooldown for the bar percentage, even if the starting cooldown is longer.
+        const dashMaxToDisplay = Math.max(this.stats.dashCooldownMax, 180); 
+        const dashPct = 1 - (this.dashCooldown / dashMaxToDisplay);
+        
+        if (dashPct < 1 || this.dashCooldown > 0) {
+            ctx.fillStyle = '#333';
+            ctx.fillRect(-20, 25, 40, 4);
+            // Red for initial cooldown, white for normal operational cooldown
+            ctx.fillStyle = this.dashCooldown <= this.stats.dashCooldownMax ? 'white' : 'red'; 
+            
+            // Calculate fill for the first 3 seconds separately, then use normal max
+            const fillWidth = 40 * Math.min(1, 1 - (this.dashCooldown / 180));
+            
+            ctx.fillRect(-20, 25, 40 * dashPct, 4);
+        }
+
+        ctx.rotate(this.angle);
+
+        // --- MINI AIR SHIP DRAWING ---
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = this.color;
+        
+        // Engine thrusters (darker blue)
+        ctx.fillStyle = '#008899';
+        ctx.beginPath(); ctx.rect(-18, -12, 10, 6); ctx.fill(); // Top Engine
+        ctx.beginPath(); ctx.rect(-18, 6, 10, 6); ctx.fill();  // Bottom Engine
+
+        // Main Hull (Neon Blue)
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.moveTo(20, 0); // Nose tip
+        ctx.lineTo(8, -10); // Front top slope
+        ctx.lineTo(-12, -8); // Main body top
+        ctx.lineTo(-20, -4); // Tail top
+        ctx.lineTo(-20, 4);  // Tail bottom
+        ctx.lineTo(-12, 8);  // Main body bottom
+        ctx.lineTo(8, 10);  // Front bottom slope
+        ctx.closePath();
+        ctx.fill();
+
+        // Cockpit Window (Bright White/Cyan)
+        ctx.fillStyle = '#e0ffff';
+        ctx.shadowBlur = 20; ctx.shadowColor = '#fff';
+        ctx.beginPath();
+        ctx.moveTo(15, 0);
+        ctx.lineTo(5, -5);
+        ctx.lineTo(5, 5);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Engine glow lines
+        if (Vec2.mag(this.vel) > 1) {
+             ctx.strokeStyle = this.color;
+             ctx.lineWidth = 2;
+             ctx.beginPath(); ctx.moveTo(-20, -9); ctx.lineTo(-25 - Math.random()*5, -9); ctx.stroke();
+             ctx.beginPath(); ctx.moveTo(-20, 9); ctx.lineTo(-25 - Math.random()*5, 9); ctx.stroke();
+        }
+
+        ctx.restore();
+    }
+
+    hit(dmg) {
+        if (this.invulnerable > 0) return;
+        this.hp -= dmg;
+        this.invulnerable = 30; // 0.5s mercy
+        Game.shake = 15;
+        Game.ui.updateHp(this.hp, this.maxHp);
+        // Sparks effect
+        for(let i=0; i<8; i++) Game.particles.push(new Particle(this.pos.x, this.pos.y, (Math.random()-0.5)*15, (Math.random()-0.5)*15, 3, this.color));
+        
+        if (this.hp <= 0) Game.over();
+    }
+}
+
+class Enemy extends Entity {
+    constructor(type) {
+        super(0, 0, 10, '#ff0055');
+        // Spawn edges
+        if(Math.random()<0.5) { this.pos.x = Math.random()<0.5 ? -30 : bounds.w+30; this.pos.y = Math.random()*bounds.h; }
+        else { this.pos.x = Math.random()*bounds.w; this.pos.y = Math.random()<0.5 ? -30 : bounds.h+30; }
+
+        this.type = type;
+        this.pushForce = 0.5;
+        
+        if (type === 'basic') {
+            this.hp = 30; this.speed = 0.4; this.score = 50;
+        } else if (type === 'tank') {
+            this.hp = 120; this.speed = 0.15; this.radius = 20; this.color = '#ff8800'; this.score = 200;
+        } else if (type === 'rusher') {
+            this.hp = 15; this.speed = 0.8; this.radius = 8; this.color = '#aa00ff'; this.score = 80;
+        }
+    }
+
+    update() {
+        // 1. Steering: Seek Player
+        const pVec = Vec2.sub(Game.player.pos, this.pos);
+        const dist = Vec2.mag(pVec);
+        const seek = Vec2.mult(Vec2.normalize(pVec), this.speed);
+        this.acc = Vec2.add(this.acc, seek);
+
+        // 2. Steering: Separation (Flocking) - prevents stacking
+        Game.enemies.forEach(other => {
+            if (other === this) return;
+            const diff = Vec2.sub(this.pos, other.pos);
+            const d = Vec2.mag(diff);
+            if (d < this.radius + other.radius + 5) {
+                // Push away
+                let force = Vec2.normalize(diff);
+                force = Vec2.mult(force, this.pushForce);
+                this.acc = Vec2.add(this.acc, force);
+            }
+        });
+
+        super.update();
+
+        // Hit player logic
+        if (dist < this.radius + Game.player.radius) {
+            Game.player.hit(10);
+            // Bounce
+            const bounce = Vec2.mult(Vec2.normalize(pVec), -10);
+            this.vel = Vec2.add(this.vel, bounce);
+        }
+    }
+
+    takeDamage(amt, knockbackVec) {
+        this.hp -= amt;
+        this.vel = Vec2.add(this.vel, knockbackVec); // Knockback
+        Game.particles.push(new Particle(this.pos.x, this.pos.y, 0,0, 4, 'white', 0.2)); // Flash
+        
+        if (this.hp <= 0) {
+            this.dead = true;
+            Game.score += this.score;
+            Game.ui.updateScore(Game.score);
+            // Explosion
+            for(let i=0; i<8; i++) {
+                const angle = Math.random() * 6.28;
+                const s = Math.random() * 5;
+                Game.particles.push(new Particle(this.pos.x, this.pos.y, Math.cos(angle)*s, Math.sin(angle)*s, Math.random()*5, this.color));
+            }
+        }
+    }
+}
+
+class Bullet {
+    constructor(x, y, vel, dmg) {
+        this.pos = {x, y}; this.vel = vel; this.dmg = dmg;
+        this.radius = 3; this.dead = false; this.life = 60;
+        // Bright Yellow Plasma Color
+        this.color = '#ffff00'; 
+    }
+    update() {
+        this.pos = Vec2.add(this.pos, this.vel);
+        this.life--;
+        // Bullets destroy themselves if they leave the screen
+        if(this.life<=0 || this.pos.x<0 || this.pos.x>bounds.w || this.pos.y<0 || this.pos.y>bounds.h) this.dead = true;
+        
+        // Hit check: ONLY hits entities in the Game.enemies array (Enemy Airships)
+        Game.enemies.forEach(e => {
+            if (Vec2.dist(this.pos, e.pos) < e.radius + this.radius) {
+                this.dead = true;
+                e.takeDamage(this.dmg, Vec2.mult(Vec2.normalize(this.vel), 2));
+            }
+        });
+    }
+    draw() {
+        // Draw bullet using bright yellow color with glow
+        ctx.fillStyle = this.color;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = this.color;
+
+        ctx.beginPath(); 
+        ctx.arc(this.pos.x, this.pos.y, this.radius, 0, Math.PI*2); 
+        ctx.fill();
+
+        // Trail
+        ctx.strokeStyle = `rgba(255, 255, 0, ${this.life / 60})`; // Yellow trail
+        ctx.lineWidth = 2;
+        ctx.beginPath(); 
+        ctx.moveTo(this.pos.x, this.pos.y); 
+        ctx.lineTo(this.pos.x - this.vel.x, this.pos.y - this.vel.y); 
+        ctx.stroke();
+
+        ctx.shadowBlur = 0; // Reset blur for other elements
+    }
+}
+
+class SlashHitbox {
+    constructor(x, y, angle, dmg) {
+        this.x = x; this.y = y; this.angle = angle; this.dmg = dmg;
+        this.life = 5; this.dead = false;
+        
+        // Hit logic immediately on spawn
+        Game.enemies.forEach(e => {
+            const d = Vec2.dist({x:this.x, y:this.y}, e.pos);
+            if (d < 100) { // Reach
+                const angToE = Math.atan2(e.pos.y - this.y, e.pos.x - this.x);
+                let diff = Math.abs(angToE - this.angle);
+                if (diff > Math.PI) diff = (2*Math.PI) - diff;
+                
+                if (diff < 1.0) { // 60 degree arc roughly
+                    e.takeDamage(this.dmg, {x:Math.cos(this.angle)*8, y:Math.sin(this.angle)*8});
+                }
+            }
+        });
+    }
+    update() {
+        this.x = Game.player.pos.x; this.y = Game.player.pos.y; // Follow player
+        this.life--; if(this.life<=0) this.dead=true;
+    }
+    draw() {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.angle);
+        ctx.globalAlpha = this.life / 5;
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 4;
+        ctx.shadowBlur = 20; ctx.shadowColor = 'white';
+        ctx.beginPath();
+        ctx.arc(0,0, 70, -0.6, 0.6);
+        ctx.stroke();
+        ctx.restore();
+    }
+}
+
+class Particle {
+    constructor(x, y, vx, vy, size, color, fadeSpeed) {
+        this.pos = {x, y}; this.vel = {x:vx, y:vy};
+        this.size = size; this.color = color;
+        this.alpha = 1; this.dead = false;
+        this.fade = fadeSpeed || 0.05;
+    }
+    update() {
+        this.pos = Vec2.add(this.pos, this.vel);
+        this.vel = Vec2.mult(this.vel, 0.9);
+        this.alpha -= this.fade;
+        if(this.alpha<=0) this.dead=true;
+    }
+    draw() {
+        ctx.save();
+        ctx.globalAlpha = this.alpha;
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.pos.x, this.pos.y, this.size, this.size);
+        ctx.restore();
+    }
+}
+
+/**
+ * MAIN GAME LOGIC
+ */
+const Game = {
+    running: false,
+    score: 0,
+    wave: 1,
+    shake: 0,
+    player: null,
+    enemies: [],
+    projectiles: [],
+    particles: [],
+    
+    ui: {
+        updateScore: (s) => document.getElementById('score-display').innerText = s,
+        updateWave: (w) => document.getElementById('wave-display').innerText = "WAVE " + w,
+        updateHp: (cur, max) => document.getElementById('hp-fill').style.width = (cur/max*100) + "%"
+    },
+
+    init() {
+        Input.init();
+        this.player = new Player();
+        this.enemies = [];
+        this.projectiles = [];
+        this.particles = [];
+        this.score = 0;
+        this.wave = 1;
+        this.running = true;
+        this.shake = 0;
+        
+        document.getElementById('start-screen').classList.remove('active-overlay');
+        document.getElementById('game-over').classList.remove('active-overlay');
+        document.getElementById('upgrade-menu').classList.remove('active-overlay');
+        
+        this.ui.updateScore(0);
+        this.ui.updateWave(1);
+        this.ui.updateHp(100, 100);
+        
+        // Start Music
+        gameMusic.play().catch(error => {
+            console.log("Audio playback failed (usually because of browser autoplay policy). Starting game anyway.", error);
+        });
+
+        this.loop();
+    },
+    
+    // FUNCTION: Handles returning to the Start Screen from Game Over
+    exitToMenu() {
+        this.running = false;
+        gameMusic.pause();
+        document.getElementById('game-over').classList.remove('active-overlay');
+        document.getElementById('start-screen').classList.add('active-overlay');
+        // Ensure the main menu is visible if settings were open previously
+        hideSettings(); 
+    },
+
+    loop() {
+        if (!this.running) return;
+        requestAnimationFrame(() => this.loop());
+
+        // Screen Shake Apply
+        ctx.save();
+        if (this.shake > 0) {
+            ctx.translate((Math.random()-0.5)*this.shake, (Math.random()-0.5)*this.shake);
+            this.shake *= 0.9;
+            if(this.shake<0.5) this.shake=0;
+        }
+
+        // Clear
+        // === Clear the canvas transparently to reveal the CSS background video ===
+        ctx.clearRect(0, 0, bounds.w, bounds.h);
+        // =======================================================================
+        
+        // --- Spawn Logic ---
+        let spawnChance = 0;
+        let enemyType = 'basic';
+        
+        if (this.wave === 1) {
+            spawnChance = 0.005; 
+        } else if (this.wave === 2) {
+            spawnChance = 0.008; 
+        } else {
+            // Wave 3 and beyond
+            spawnChance = 0.01 + (this.wave * 0.002);
+            if (this.wave > 2 && Math.random()>0.7) enemyType = 'rusher';
+            if (this.wave > 4 && Math.random()>0.85) enemyType = 'tank';
+        }
+
+        if (Math.random() < spawnChance) {
+            this.enemies.push(new Enemy(enemyType));
+        }
+
+        // Wave Progress
+        if (this.score > this.wave * 1500) {
+            this.wave++;
+            this.ui.updateWave(this.wave);
+            // Every 3 waves -> Upgrade
+            if (this.wave % 3 === 0) {
+                this.triggerUpgrade();
+            } else {
+                this.shake = 20; // Just shake on normal wave up
+            }
+        }
+
+        // Entities Update and Draw
+        this.player.update();
+        this.player.draw();
+
+        this.enemies = this.enemies.filter(e => !e.dead);
+        this.enemies.forEach(e => { e.update(); e.draw(); });
+
+        this.projectiles = this.projectiles.filter(p => !p.dead);
+        this.projectiles.forEach(p => { p.update(); p.draw(); });
+
+        this.particles = this.particles.filter(p => !p.dead);
+        this.particles.forEach(p => { p.update(); p.draw(); });
+
+        ctx.restore();
+    },
+
+    over() {
+        this.running = false;
+        gameMusic.pause(); // Stop music on game over
+        document.getElementById('game-over').classList.add('active-overlay');
+        document.getElementById('final-score').innerText = "FINAL SCORE: " + this.score;
+    },
+
+    triggerUpgrade() {
+        this.running = false;
+        gameMusic.pause(); // Pause music during upgrade selection
+        const menu = document.getElementById('upgrade-menu');
+        const container = document.getElementById('upgrade-cards');
+        menu.classList.add('active-overlay');
+        
+        // Generate options
+        const options = [
+            { name: "Nanite Hull", desc: "Heal 50% HP + Max HP Up", action: () => { Game.player.maxHp+=20; Game.player.hp = Math.min(Game.player.hp+50, Game.player.maxHp); } },
+            { name: "Hyper Thrusters", desc: "Movement Speed +15%", action: () => { Game.player.stats.moveSpeed *= 1.15; } },
+            { name: "Plasma Edge", desc: "Melee Damage +25%", action: () => { Game.player.stats.slashDmg *= 1.25; } },
+            { name: "Coolant Flush", desc: "Dash Cooldown -20%", action: () => { Game.player.stats.dashCooldownMax *= 0.8; } },
+            { name: "Rapid Fire", desc: "Gun Fire Rate +20%", action: () => { Game.player.stats.fireRate *= 0.8; } }
+        ];
+        
+        // Pick 3 random
+        container.innerHTML = '';
+        const selectedOptions = [];
+        while(selectedOptions.length < 3) {
+            const opt = options[Math.floor(Math.random()*options.length)];
+            if (!selectedOptions.includes(opt)) {
+                selectedOptions.push(opt);
+            }
+        }
+
+        selectedOptions.forEach(opt => {
+            const card = document.createElement('div');
+            card.className = 'upgrade-card';
+            card.innerHTML = `<h3>${opt.name}</h3><p>${opt.desc}</p>`;
+            card.onclick = () => {
+                opt.action();
+                Game.ui.updateHp(Game.player.hp, Game.player.maxHp);
+                menu.classList.remove('active-overlay');
+                Game.running = true;
+                gameMusic.play(); // Resume music after selection
+                Game.loop();
+            };
+            container.appendChild(card);
+        });
+    }
+};
+
+</script>
+</body>
+</html>
